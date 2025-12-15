@@ -26,8 +26,8 @@ FROM node:20 AS runner
 
 WORKDIR /app
 
-# Install dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y python3 ffmpeg curl && rm -rf /var/lib/apt/lists/*
 
 # Set environment to production
 ENV NODE_ENV=production
