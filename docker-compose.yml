@@ -1,58 +1,21 @@
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: happy-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: happy
-      POSTGRES_PASSWORD: happypassword
-      POSTGRES_DB: happy
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U happy -d happy"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  # Redis
-  redis:
-    image: redis:7-alpine
-    container_name: happy-redis
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  # MinIO S3-compatible storage
-  minio:
-    image: minio/minio
-    container_name: happy-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: happyminio
-      MINIO_ROOT_PASSWORD: happyminiopassword
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  # Happy Server (runs migrations and minio init on startup)
   server:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: happy-server
-    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - DATABASE_URL=postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-happy}
+      - REDIS_URL=redis://redis:6379
+      - HANDY_MASTER_SECRET=${HANDY_MASTER_SECRET}
+      - S3_HOST=minio
+      - S3_PORT=9000
+      - S3_USE_SSL=false
+      - S3_ACCESS_KEY=${SERVICE_USER_MINIO}
+      - S3_SECRET_KEY=${SERVICE_PASSWORD_MINIO}
+      - S3_BUCKET=happy
+      - S3_PUBLIC_URL=${S3_PUBLIC_URL:-http://minio:9000/happy}
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,38 +23,73 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    environment:
-      NODE_ENV: production
-      PORT: 3005
-      DATABASE_URL: postgres://happy:happypassword@postgres:5432/happy
-      REDIS_URL: redis://redis:6379
-      HANDY_MASTER_SECRET: ${HANDY_MASTER_SECRET:-please-change-this-secret-key}
-      S3_HOST: minio
-      S3_PORT: "9000"
-      S3_USE_SSL: "false"
-      S3_ACCESS_KEY: happyminio
-      S3_SECRET_KEY: happyminiopassword
-      S3_BUCKET: happy
-      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://minio:9000/happy}
-    ports:
-      - "3005:3005"
     command: >
       sh -c "
         npx prisma migrate deploy &&
         curl -sO https://dl.min.io/client/mc/release/linux-amd64/mc &&
         chmod +x mc &&
-        ./mc alias set minio http://minio:9000 happyminio happyminiopassword &&
+        ./mc alias set minio http://minio:9000 $${SERVICE_USER_MINIO} $${SERVICE_PASSWORD_MINIO} &&
         ./mc mb -p minio/happy || true &&
         ./mc anonymous set download minio/happy &&
         rm mc &&
         yarn start
       "
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      test:
+        - CMD
+        - curl
+        - '-f'
+        - 'http://localhost:3005/health'
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=${POSTGRES_DB:-happy}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${SERVICE_USER_POSTGRES} -d ${POSTGRES_DB:-happy}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=${SERVICE_USER_MINIO}
+      - MINIO_ROOT_PASSWORD=${SERVICE_PASSWORD_MINIO}
+    healthcheck:
+      test:
+        - CMD
+        - mc
+        - ready
+        - local
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres_data:
