@@ -73,8 +73,8 @@ services:
       S3_SECRET_KEY: happyminiopassword
       S3_BUCKET: happy
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://minio:9000/happy}
-    ports:
-      - "${PORT:-3005}:3005"
+    expose:
+      - "3005"
     command: >
       sh -c "
         npx prisma migrate deploy &&
