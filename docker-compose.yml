@@ -62,21 +62,7 @@ services:
       echo 'MinIO bucket initialized'
       "
 
-  # Database migrations
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: happy-migrate
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://happy:happypassword@postgres:5432/happy
-    command: ["npx", "prisma", "migrate", "deploy"]
-    restart: "no"
-
-  # Happy Server
+  # Happy Server (runs migrations on startup)
   server:
     build:
       context: .
@@ -90,8 +76,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
     environment:
@@ -109,6 +93,7 @@ services:
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://minio:9000/happy}
     ports:
       - "${PORT:-3005}:3005"
+    command: ["sh", "-c", "npx prisma migrate deploy && yarn start"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
