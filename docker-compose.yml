@@ -46,23 +46,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # MinIO bucket initialization
-  minio-init:
-    image: minio/mc
-    container_name: happy-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    restart: "no"
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 happyminio happyminiopassword &&
-      mc mb -p local/happy || true &&
-      mc anonymous set download local/happy &&
-      echo 'MinIO bucket initialized'
-      "
-
-  # Happy Server (runs migrations on startup)
+  # Happy Server (runs migrations and minio init on startup)
   server:
     build:
       context: .
@@ -76,8 +60,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 3005
@@ -93,7 +75,17 @@ services:
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://minio:9000/happy}
     ports:
       - "${PORT:-3005}:3005"
-    command: ["sh", "-c", "npx prisma migrate deploy && yarn start"]
+    command: >
+      sh -c "
+        npx prisma migrate deploy &&
+        curl -sO https://dl.min.io/client/mc/release/linux-amd64/mc &&
+        chmod +x mc &&
+        ./mc alias set minio http://minio:9000 happyminio happyminiopassword &&
+        ./mc mb -p minio/happy || true &&
+        ./mc anonymous set download minio/happy &&
+        rm mc &&
+        yarn start
+      "
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
