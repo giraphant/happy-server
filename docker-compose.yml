@@ -73,8 +73,11 @@ services:
       S3_SECRET_KEY: happyminiopassword
       S3_BUCKET: happy
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://minio:9000/happy}
-    ports:
-      - "127.0.0.1:3005:3005"
+    expose:
+      - "3005"
+    networks:
+      - default
+      - coolify
     command: >
       sh -c "
         npx prisma migrate deploy &&
@@ -92,6 +95,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+networks:
+  coolify:
+    external: true
 
 volumes:
   postgres_data:
